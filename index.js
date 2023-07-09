@@ -8,11 +8,16 @@ const jwt =  require('jsonwebtoken')
 const cookieParser = require('cookie-parser')
 const salt = bcrypt.genSaltSync(10)
 const secret = "sads3242sadad23423"
+const Post = require('./models/Post')
+const multer = require('multer')
+const uploadMiddleware = multer({dest:"uploads"})
+const fs = require('fs');
+const path = require('path');
 
 app.use(cors({credentials:true , origin:"http://localhost:3000"}));
 app.use(express.json());
 app.use(cookieParser());
-
+app.use('/uploads',express.static(__dirname+'/uploads'))
 
 
 mongoose.connect("mongodb+srv://nawazarif901:qBDJ3qVHwh5MpMhI@blogwebapp.hzjgpml.mongodb.net/?retryWrites=true&w=majority")
@@ -48,13 +53,16 @@ app.post('/login',async (req,res)=>{
     //auth relevent payload,secret for server only ,options empty
     jwt.sign({username,id:userDoc._id} , secret,{} ,(err,token) =>{
       if (err) {
-        alert("unpossible")
+        console.log("unpossible from log")
       }else{
         // res.json(token)
         // response contains cokie named token
        //cok set here
       //  snippet sets the value of the cookie in the response sent from the server to the client. The client's web browser will receive and store this cookie.
-        res.cookie('token',token).json("saved")
+        res.cookie('token',token).json({
+          id : userDoc._id,
+          username
+        })
       }
     })
   } 
@@ -78,8 +86,49 @@ app.get('/profile',(req,res)=>{
   })
 })
 
+app.post('/create',uploadMiddleware.single('file'),async(req,res)=>{
+
+  const {originalname,path} = req.file
+  const parts = originalname.split('.')
+  const ext = parts[parts.length-1]
+  const newPath = path+'.'+ext
+  fs.renameSync(path,newPath)
+
+  const {token} = req.cookies
+  jwt.verify(token,secret,{},async(err,info)=>{
+    if (err) throw err
+
+    const {summary,title,content,file} = req.body
+    const postDoc = await Post.create(
+      {
+        title,
+        summary,
+        content,
+        cover:newPath,
+        author:info.id
+      })
+    })
+  })
+  // res.json({ext})
+ 
 app.post('/logout',(req,res)=>{
   res.cookie("token",'').json('logged out')
+})
+
+app.get('/create', async(req,res)=>{
+  const posts = await Post.find()
+  .populate('author',['username'])
+  .sort({createdAt:-1})
+  .limit(4)
+  // hitting the path on browser this result will show
+  res.json(posts)
+})
+
+app.get('/post/:id',async(req,res)=>{
+
+  const {id} = req.params
+  const postDoc = await Post.findById(id).populate('author',['username'])
+  res.json(postDoc) 
 })
 
   app.listen(5000)
